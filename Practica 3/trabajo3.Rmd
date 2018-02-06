@@ -1,0 +1,1439 @@
+purl---
+title: 'Trabajo 3: Programación'
+author: "Victor Manuel Cerrato Molina y Gema Correa Fernández"
+date: "27 de Mayo de 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Ajuste de Modelos Lineales
+
+Antes de nada, debemos cargar las siguientes librerías que usaremos a lo largo de la práctica:
+$\\$
+```{r}
+# install.packages("e1071")
+library(e1071)   # Para usar skewness
+
+# install.packages("readr")
+library(readr)   # Parar usar read.csv
+
+# install.packages("caret")
+library(caret)   # Para usar BoxCoxTrans
+```
+
+## Problema de Regresión
+
+### Apartado 1
+
+#### Comprender el problema a resolver.
+
+Para el **Problema de Regresión**, hemos escogido el data.frame [Los Angeles Ozone](http://statweb.stanford.edu/~tibs/ElemStatLearn/). Estos datos registran el nivel de concentración atmosférica de ozono de ocho mediciones meteorológicas diarias, realizadas en la cuenca de Los Ángeles en 1976. En concreto, tenemos 330 casos completos. Nuestro objetivo es predecir la variable **ozone** a partir del resto de variables. Para ello tendremos que buscar el mejor modelo y encontrar que factores meteorológicos son los más influyentes en las mediciones de ozono.
+
+Los atributos que tenemos en este data.frame son:
+
+  1. **ozone**: Máximo ozono diario.
+  2. **vh**: Altura (_Vandenberg 500 mb Height_).
+  3. **wind**: Velocidad del viento (mph).
+  4. **humidity**: Humedad (%).
+  5. **temp**: Temperatura (_Sandburg AFB Temperature_).
+  6. **ibh**: Altura de la base de inversión (_Inversion Base Height_). 
+  7. **dpg**: Gradiente de presión de Daggot (_Daggot Pressure Gradient_). 
+  8. **ibt**: Temperatura de la base de inversión (_Inversion Base Temperature_).
+  9. **vis**: Visibilidad (en millas).
+  10. **doy**: Día del año en que fue tomada la medición.
+
+Ninguna variable podrá tomar valores _NA_. Además, nuestra variable de respuesta será **ozone**, como se nos dice en el enlace de la base de datos. 
+
+A continuación, vamos a leer nuestro data.frame:
+$\\$
+```{r}
+# Guardamos el data frame en una varible
+LAozone <- read.csv("datos/LAozone.data")
+
+# Visualizamos la cabecera del data frame
+head(LAozone)
+
+# Mostramos la dimensión (330 filas y 10 columnas)
+dim(LAozone)
+```
+
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 2
+
+#### Los conjuntos de training, validación y test usados en su caso.
+
+Como en la base de datos elegida solo se nos proporciona un archivo, somos nosotros quiénes tenemos que hacer la partición de los datos. Para ello, vamos a usar el mismo procedimiento usado en el pdf proporcionado por la profesora. Por tanto, partimos el data.frame en un $70\%$ para el training y en un $30\%$ para el test.
+$\\$
+```{r}
+# Establecemos una semilla por defecto para hacer el mismo tipo de partición
+set.seed(1)
+
+# Nos quedamos con los indices para el training
+train = sample (nrow(LAozone), round(nrow(LAozone)*0.7)) 
+
+# Reservamos por separado training y test
+LAozone.train = LAozone[train,]  
+LAozone.test = LAozone[-train,]
+```
+
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 3
+
+#### Preprocesado de los datos: Falta de datos, categorización, normalización, reducción de dimensionalidad, etc.
+
+Para el preprocesado de datos lo primero que hacemos, es borrar la última columna de nuestro data.frame, en concreto, la variable **doy**. Este atributo, guarda el día del año en que fue tomada la medición, por lo que la podemos considerar como un identificador, puesto que entre una fila y otra existe una diferencia de una unidad. 
+$\\$
+```{r}
+# Borramos la última columna (doy) del training
+LAozone.train = LAozone.train[-ncol(LAozone.train)]
+
+# Borramos la última columna (doy) del test
+LAozone.test = LAozone.test[-ncol(LAozone.test)]
+```
+
+Ahora, vamos hacer una transformación con los atributos asimétricos, ya que son necesarios para la aplicación de algunos métodos de aprendizaje sensibles a distancias. Se consideran asimétricos cuando el valor _skewness_ se aleja de $0$.
+
+$$ skewness = \frac{\sum (x_i-mean(x))^3}{(n-1)v^3/2} $$
+
+Primero, obtenemos el valor de asimetría de cada atributo:
+$\\$
+```{r}
+# Obtenemos el valor de asimetría de los datos training
+v_asimetria = apply(LAozone.train, 2, skewness)
+
+# Ordenamos de mayor a menor los valores obtenidos
+sort(abs(v_asimetria), decreasing = T)
+```
+
+Segundo, transformaremos los datos a partir de un umbral de $0.8$. Elegimos este umbral, ya que los valores más cercanos a $0$ serán los más simétricos. Por lo tanto, realizaremos transformaciones para _vh_, _humidity_ y _vis_.
+
+_**Nota**: No modificaremos ozone, ya que es nuestra variable de respuesta._
+$\\$
+```{r}
+# Transformación para la variable vh
+# -----------------------------------------------------------------------------------
+par(mfrow = c(1:2)) # Dividimos la región en dos partes
+vh_trans = BoxCoxTrans(LAozone.train$vh)  # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(LAozone.train$vh, main = "Sin transformacion (vh)", xlab = "", col = 3)
+hist(predict(vh_trans,LAozone.train$vh), main = "Con transformacion (vh)", xlab = "",
+     col = 3)
+
+# Transformación para la variable humidity
+# -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+humidity_trans = BoxCoxTrans(LAozone.train$humidity) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(LAozone.train$humidity, main = "Sin transformacion (humidity)", xlab = "", 
+     col = 3)
+hist(predict(humidity_trans,LAozone.train$humidity), 
+     main = "Con transformacion (humidity)", xlab = "", col = 3)
+
+# Transformación para la variable vis
+# -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+vis_trans = BoxCoxTrans(LAozone.train$vis) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(LAozone.train$vis, main = "Sin transformacion (vis)", xlab = "", col = 3)
+hist(predict(vis_trans,LAozone.train$vis), main = "Con transformacion (vis)", 
+     xlab = "", col = 3)
+```
+
+Como se puede comprobar los valores obtenidos son más simétricos. Entonces, ya solo nos queda guardar esas transformaciones para el train.
+$\\$
+```{r}
+# Transformación vh (train)
+LAozone.train$vh = predict(vh_trans,LAozone.train$vh)
+
+# Transformación humidity (train)
+LAozone.train$humidity = predict(humidity_trans,LAozone.train$humidity)
+
+# Transformación vis (train)
+LAozone.train$vis = predict(vis_trans,LAozone.train$vis)
+```
+
+También guardamos esas mismas transformaciones para el test.
+$\\$
+```{r}
+# Transformación vh (test)
+LAozone.test$vh = predict(vh_trans,LAozone.test$vh)
+
+# Transformación humidity (test)
+LAozone.test$humidity = predict(humidity_trans,LAozone.test$humidity)
+
+# Transformación vis (test)
+LAozone.test$vis = predict(vis_trans,LAozone.test$vis)
+```
+
+Además, para el preprocesado de datos, podemos eliminar las variables con varianza $0$ o muy próximas.
+$\\$
+```{r}
+nearZeroVar(LAozone.train)
+```
+
+Se comprueba que no existe ninguna, entonces no se hace realiza ningún cambio.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 4
+
+#### Selección de clases de funciones a usar.
+
+```{r}
+attach(LAozone.train) # Para simplificar y prescindir del prefijo LAozone.train
+```
+
+Antes de nada, implementamos una función que tiene el mismo funcionamiento que _pairs_, sin embargo en el triángulo superior mostramos los coeficientes de correlación lineal, que nos dice como de relacionadas linealmente están las variables. Estos coeficientes se imprimen con un tamaño proporcional a su valor.
+$\\$
+```{r}
+panel.cor <- function(x, y, digits=2, prefix="", cex.cor) {
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex * r)
+}
+```
+
+Hacemos uso de la función y mostramos gráficamente todos con todos.
+$\\$
+```{r}
+pairs(LAozone.train, lower.panel=panel.smooth,upper.panel=panel.cor)
+```
+
+Observamos que _ibt_ está muy relacionada linealemte con $3$ variables, por consiguiente la quitamos.
+$\\$
+```{r}
+# Quitamos ibt tanto para train como para test
+LAozone.train = LAozone.train[,-8]
+LAozone.test = LAozone.test[,-8]
+```
+
+Volvemos a mostrar todos con todos, pero esta vez sin _ibt_:
+$\\$
+```{r}
+pairs(LAozone.train, lower.panel=panel.smooth,upper.panel=panel.cor)
+```
+
+Con la anterior salida, tomamos la decisión de quitar _vh_, ya que es una variable muy relacionada linealmente con otras variables.
+$\\$
+```{r}
+# Quitamos vh tanto para train como para test
+LAozone.train = LAozone.train[,-2]
+LAozone.test = LAozone.test[,-2]
+
+# Y volvemos a mostrar el gráfico
+pairs(LAozone.train, lower.panel=panel.smooth,upper.panel=panel.cor)
+```
+
+A partir de ahora, trabajaremos con los atributos que aparecen en el gráfico anterior.
+
+Una vez arreglados nuestros datos, ya podemos pasar a la selección del modelo. Para empezar a seleccionar el mejor modelo, nos basaremos en $E_{test}$, debido a que éste se aproxima al error fuera de la muestra, $E_{out}$, mejor que $E_{in}$. Por ello creamos una función que nos calcule los errores $E_{in}$ y $E_{test}$.
+$\\$
+```{r}
+# Función que calcula los errores E_in y E_test
+errores <- function(m){
+  
+  train = predict(m) # usa training
+  test = predict(m, LAozone.test, type= "response") # usa test
+  
+  # Calculamos los errores
+  etr = mean((train - LAozone.train[,1])^2)
+  etst = mean((test - LAozone.test[,1])^2)
+  
+  list(Error_Train = etr, Error_Test = etst)
+}
+```
+
+Una vez implementada esa función, comenzamos a elegir el mejor modelo. Primero usaremos **Regresión Lineal** sobre las variables.
+
+**Modelo 1**: Predecimos _ozone_ con todas las variables mediante Regresión Lineal.
+$\\$
+```{r}
+# Creamos el modelo
+m1 = lm(ozone ~ wind + humidity + temp + ibh + dpg + vis, data = LAozone.train) 
+summary(m1) # Realizamos un análisis del modelo
+errores(m1) # Obtenemos los errores
+```
+
+Como se puede ver en la salida del _summary()_, los coeficientes más importantes son _humidity_, _temp_ y _vh_, ya que tienen $3$ estrellas. La primera comparación que haremos será de _ozone_ con las tres mejores, sin niguna transformación.
+
+**Modelo 2**: Predecimos _ozone_ con la variable _temp_ mediante Regresión Lineal.
+$\\$
+```{r}
+# Creamos el modelo
+m2 = lm(ozone ~ temp, data=LAozone.train) 
+summary(m2) # Realizamos un análisis del modelo
+errores(m2) # Obtenemos los errores
+
+# Vamos a mostrar gráficamente el modelo
+plot(ozone ~ temp, data = LAozone.train)
+w = m2$coefficients
+x = matrix(rep(1, length(temp)), nrow = length(temp)) 
+x = cbind (x, temp)
+y = apply(x, 1, function(vec) w %*% vec)
+points(temp, y, col=2)
+```
+
+Como vemos el modelo se ajusta bastante bien, por lo que no haría falta el uso de una transformación, pero vamos a intentar mejorarlo.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+**Modelo 3**: Predecimos _ozone_ con la variable _ibh_ mediante Regresión Lineal.
+$\\$
+```{r}
+# Creamos el modelo
+m3 = lm(ozone ~ ibh, data=LAozone.train) 
+# Realizamos un análisis del modelo
+summary(m3)
+# Obtenemos los errores
+errores(m3)
+
+# Vamos a mostrar gráficamente el modelo
+plot(ozone ~ ibh, data=LAozone.train)
+w = m3$coefficients
+x = matrix(rep(1, length(ibh)), nrow= length(ibh)) 
+x = cbind (x, ibh)
+y = apply(x, 1, function(vec) w %*% vec)
+points(ibh, y, col=2)
+```
+
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+**Modelo 4**: Predecimos _ozone_ con _humidity_ mediante Regresión Lineal.
+$\\$
+```{r}
+# Creamos el modelo
+m4 = lm(ozone ~ humidity, data=LAozone.train) 
+summary(m4) # Realizamos un análisis del modelo
+errores(m4) # Obtenemos los errores
+
+# Vamos a mostrar gráficamente el modelo
+plot(ozone ~ humidity, data=LAozone.train)
+w = m4$coefficients
+x = matrix(rep(1, length(humidity)), nrow = length(humidity)) 
+x = cbind (x, humidity)
+y = apply(x, 1, function(vec) w %*% vec)
+points(humidity, y, col=2)
+```
+
+El atributo que mejor explica por sí sola la variable _ozone_ es _temp_ (Modelo 2) y con amplia diferencia atendiendo a los errores que produce la regresión lineal.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+A continuación, vamos a probar transformaciones en las variables que obtuvimos peores resultados, ya que sospechamos que puede que no haya linealidad en los datos para explicar ozone, puesto que las soluciones no fueron satisfactorias mediante regresión lineal.
+
+**Modelo con transformación**: Predecimos _ozone_ mediante Regresión Lineal, usando la función _poly()_ en la variable _dpg_ para ver si se puede explicar ozone mediante dicha trasformación.
+$\\$
+```{r}
+# Creamos el modelo
+m = lm(ozone ~ poly(dpg,2) , data = LAozone.train) 
+summary(m) # Realizamos un análisis del modelo
+errores(m) # Obtenemos los errores
+
+# Vamos a mostrar gráficamente el modelo
+plot(ozone ~ dpg, data=LAozone.train)
+w = m$coefficients
+x = matrix(rep(1, length(dpg)), nrow = length(dpg)) 
+x = cbind (x, poly(dpg,2))
+y= apply(x, 1, function(vec) w %*% vec)
+points(dpg, y, col=2)
+```
+
+Este modelo con una transformación no lineal en los datos mejora el modelo lineal pero queda lejos del modelo lineal con _temp_ (Modelo 2) en lo que respecta a errores.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+**Modelo con transformación**: Predecimos _ozone_ mediante Regresión Lineal usando la función potencia cúbica en la variable _vis_ para ver si se puede explicar ozone mediante dicha trasformación.
+$\\$
+```{r}
+# Creamos el modelo
+m = lm(ozone ~ I(vis^3), data = LAozone.train) 
+summary(m) # Realizamos un análisis del modelo
+errores(m) # Obtenemos los errores
+
+# Vamos a mostrar gráficamente el modelo
+plot(ozone ~ vis, data=LAozone.train)
+w = m$coefficients
+x = matrix(rep(1, length(vis)), nrow= length(vis)) 
+x = cbind (x, I(vis^3))
+y = apply(x, 1, function(vec) w %*% vec)
+points(vis, y, col=2)
+```
+
+Hemos conseguido mejores resultados que con el modelo lineal pero seguimos sin obtener una mejora trascendental.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+**Modelo sin transformación**: Predecimos _ozone_ mediante Regresión Lineal con la variable _wind_.
+$\\$
+```{r}
+# Creamos el modelo
+m = lm(ozone ~ wind, data = LAozone.train) 
+summary(m) # Realizamos un análisis del modelo
+errores(m) # Obtenemos los errores
+
+# Vamos a mostrar gráficamente el modelo
+plot(ozone ~ wind, data=LAozone.train)
+w = m$coefficients
+x = matrix(rep(1, length(wind)), nrow= length(wind)) 
+x = cbind (x, wind)
+y = apply(x, 1, function(vec) w %*% vec)
+points(wind, y, col=2)
+```
+
+En este caso, hicimos transformaciones, pero ninguna tenía mejoría apreciable respecto al modelo lineal, por lo que presentamos el modelo lineal en el que se ve que la predicción no es buena fijandonos en los errores.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+***Combinaciones de variables***
+
+Ahora vamos a usar varias variables sin y con transformaciones no lineales para encontrar una predicción de _ozone_ más ajustada.
+
+**Modelo 5**: Regresión Lineal sin transformación con _temp_ y _humidity_.
+$\\$
+```{r}
+# Creamos el modelo
+m5 = lm(ozone ~ temp + humidity, data=LAozone.train) 
+summary(m5) # Realizamos un análisis del modelo
+errores(m5) # Obtenemos los errores
+```
+
+Como se comprueba, el mejor modelo lineal que tenía era con _temp_, al añadirle una combinación con la variable _humidity_, sigue obteniendo buenos resultados.
+
+**Modelo 6**: Regresión Lineal sin transformación con _temp_ e _ibh_.
+$\\$
+```{r}
+# Creamos el modelo
+m6 = lm(ozone ~ temp + ibh , data=LAozone.train) 
+summary(m6) # Realizamos un análisis del modelo
+errores(m6) # Obtenemos los errores
+```
+
+**Modelo 7**: Regresión Lineal sin transformación con _ibh_ y _humidity_.
+$\\$
+```{r}
+# Creamos el modelo
+m7 = lm(ozone ~ ibh + humidity , data=LAozone.train) 
+summary(m7) # Realizamos un análisis del modelo
+errores(m7) # Obtenemos los errores
+```
+
+La combinación por sí solas, de _ibh_ y _humidity_, no nos aportan mejorías.
+
+**Modelo 8**: Regresión Lineal sin transformación con _temp_, _ibh_ y _humidity_.
+$\\$
+```{r}
+# Creamos el modelo
+m8 = lm(ozone ~ ibh + temp + humidity , data=LAozone.train) 
+summary(m8) # Realizamos un análisis del modelo
+errores(m8) # Obtenemos los errores
+```
+
+**Modelo 9**: Regresión Lineal con transformación en _dpg_ y sin transformación para _temp_.
+$\\$
+```{r}
+# Creamos el modelo
+m9 = lm(ozone ~ poly(dpg,2) + temp, data=LAozone.train) 
+summary(m9) # Realizamos un análisis del modelo
+errores(m9) # Obtenemos los errores
+```
+
+Como se ve en la salida del _summary()_ , el peso que está asociado al primer término del polinomio ortogonal aplicado a _dpg_ no es bueno, pero si lo quitamos, el $E_{test}$ aumenta, lo cual no es deseable.
+
+**Modelo 10**: Regresión Lineal con transformaciones en _temp_ e _ibh_ y sin transformación para _humidity_.
+$\\$
+```{r}
+# Creamos el modelo
+m10 = lm(ozone ~ I(temp^2) + ibh + humidity + 0, data=LAozone.train) 
+summary(m10) # Realizamos un análisis del modelo
+errores(m10) # Obtenemos los errores
+```
+
+En este caso si quitamos el término independiente que añade _lm_, automáticamente tenemos una mejora en el error que produce el ajuste del modelo.
+
+**Modelo 11**: Regresión Lineal sin trasformaciones usando _ibh_, _dpg_ y _temp_.
+$\\$
+```{r}
+# Creamos el modelo
+m11 = lm(ozone ~ ibh + temp + dpg , data=LAozone.train) 
+summary(m11) # Realizamos un análisis del modelo
+errores(m11) # Obtenemos los errores
+```
+
+**Modelo 12**: Regresión Lineal con transformación con la función potencia cuadrado en _temp_ e _ibh_ y la función _atan()_ en _humidity_.
+$\\$
+```{r}
+# Creamos el modelo
+m12 = lm(ozone ~ I(ibh^2) +  atan(humidity) + I(temp^2), data=LAozone.train) 
+summary(m12) # Realizamos un análisis del modelo
+errores(m12) # Obtenemos los errores
+```
+
+En este modelo, obtenemos una pequeña mejoría, en comparación al modelo 2, donde usábamos _temp_ sin ninguna transformación.
+
+Después de haber probado varios modelos, antes de decantarnos por uno de ellos vamos a aplicar regularización sobre los dos mejores (Modelo 10 y Modelo 12) y si obtenemos mejores resultados será necesario aplicar tal regularación.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+### Apartado 5
+
+#### Discutir la necesidad de regularización y en su caso la función usada
+
+Para utilizar regularización usamos una función que hemos definido nosotros (usada en la práctica 2) para aplicar el modelo de Regresión Rineal con Weight Decay.
+$\\$
+```{r}
+Regress_LinWD <- function(datos,label,landa){
+  
+  # Descomponemos los datos en UDV^T
+  descom=svd(datos)
+  
+  # Calculamos una pseudo inversa especial para el caso de deacaimiento de pesos
+  pseudo_inv_WD=
+    descom$v %*% diag(1/(descom$d**2+rep(landa,length(descom$d))))%*%t(diag(descom$d))%*%t(descom$u)
+  
+  # Aplicamos la formula que nos devuelve un vector columna
+  w = pseudo_inv_WD%*%label
+  
+  # Extraemos w en forma de vector fila obteniendo los pesos de la solucion
+  t(w)[1,]
+}
+```
+
+Como hemos comentado antes, vamos a usar regularización en los dos mejores modelos que hemos considerado del Apartado 4.
+
+**Modelo 1**: Regresión Lineal con WD usando las variables trasformadas siguiente (anteriormente modelo 12):
+
+- _ibh_ con la función potencial al cuadrado.
+- _humidity_ con la función arcotangente.
+- _temp_ con la función potencial al cuadrado.
+$\\$
+```{r}
+datos = cbind(I(ibh^2) , atan(humidity) , I(temp^2),1)
+datos.test = cbind(I(LAozone.test$ibh^2) , atan(LAozone.test$humidity) ,
+                   I(LAozone.test$temp^2),1)
+
+# Establecemos por defecto un e_test alto ya que nunca llegaremos a ese valor
+Etest = 100 
+
+# Calculamos el error para varias lambdas
+for(landa in seq(3.7*10**8,4.2*10**8, length.out=10)){
+  w = Regress_LinWD(datos,ozone,landa)
+  EtestAc = mean((LAozone.test$ozone - datos.test%*%w)^2)
+  
+  # Nos quedamos con los mejores resultados
+  if(EtestAc < Etest) {
+    Etest = EtestAc
+    wmej = w
+    landamej = landa
+  }
+  
+  cat(" Landa: ",landa," Etest: ", EtestAc,"\n")
+}
+
+cat("El mejor landa es ",landamej, " con un Etest de ",Etest, 
+    " que da la solución: w=[",wmej,"]\n")
+```
+
+Tras hacer regularización un un intervalo amplio de landas (desde $0.005$ hasta $10^9$), hemos identificado el valor óptimo de landa para que el error en el conjunto de test sea mínimo.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+**Modelo 2**: Regresión Lineal con WD usando las variables trasformadas y no trasformadas siguientes (anteriormente modelo 10):
+
+- _ibh_ sin trasformación.
+- _humidity_ sin trasformación.
+- _temp_ con la función potencial al cuadrado.
+- Sin término independiente.
+$\\$
+```{r}
+datos = cbind(I(temp^2) , ibh, humidity)
+datos.test = cbind(I(LAozone.test$temp^2) , LAozone.test$ibh , LAozone.test$humidity)
+
+# Establecemos por defecto un e_test alto ya que nunca llegaremos a ese valor
+Etest = 100
+
+# Calculamos el error para varias lambdas
+for(landa in seq(2.6*10**8,2.8*10**8,length.out=10)){
+  w = Regress_LinWD(datos,ozone,landa)
+  EtestAc = mean((LAozone.test$ozone - datos.test%*%w)^2)
+  
+  # Nos quedamos con los mejores resultados
+  if(EtestAc < Etest) {
+    Etest = EtestAc
+    wmej = w
+    landamej = landa
+  }
+  
+  cat(" Landa: ",landa," Etest: ", EtestAc,"\n")
+}
+
+cat("El mejor landa es ",landamej," con un Etest de ", Etest, 
+    " que da la solución: w=[",wmej,"]\n")
+```
+
+Tras hacer regularización un un intervalo amplio de landas(desde $0.005$ hasta $10^9$), hemos identificado el valor óptimo de landa para que el error en el conjunto de test sea mínimo.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+El **modelo 2** da mejores resultados que el modelo uno, auque sin regularización esto no era así por lo que se justifica su uso.
+
+
+### Apartado 6
+
+#### Definir los modelos a usar y estimar sus parámetros e hiperparámetros
+
+Vimos en el apartado anterior que usar regularización es buena idea ya que podemos reducir el error de los modelos. El $\lambda$ más óptimo para el modelo dos se encuentra alrededor de $2.73\cdot10^8$.
+
+
+### Apartado 7
+
+#### Selección y ajuste modelo final
+
+El modelo que elegimos es el obtenido mediante Regresión Lineal con WD con los siguientes parámetros y variables:
+
+- _ibh_ sin trasformación.
+- _humidity_ sin trasformación.
+- _temp_ con la función potencial al cuadrado.
+- Sin término independiente.
+- $\lambda = 273333333$
+$\\$
+```{r}
+datos = cbind(I(temp^2) , ibh , humidity)
+datos.test = cbind(I(LAozone.test$temp^2) , LAozone.test$ibh , LAozone.test$humidity)
+
+# Calculamos los pesos  
+w = Regress_LinWD(datos, ozone, 273333333)
+
+# Calculamos los errores
+Ein = mean((LAozone.train$ozone - datos%*%w)^2)
+Etest = mean((LAozone.test$ozone - datos.test%*%w)^2)
+
+cat("Etest: ", Etest,"\nEin: ",Ein,"\n")
+```
+
+Nos hemos decantando por el anterior modelo puesto que es el que menor error en el conjunto de test nos ha salido.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+### Apartado 8
+
+#### Estimacion del error $E_{out}$ del modelo lo más ajustada posible.
+
+Para estimar el error $E_{out}$, nos hemos basado en $E_{test}$, porque con la de $E_{in}$, obtendríamos una cota peor.
+
+Vamos a obtener la cota $E_{out}$ basada en $E_{test}$, para ello hacemos uso del libro _Learning from Data_, en concreto en la _página 40_, donde nos viene la ecuación que necesitamos, que está basada en la _desigualdad de Hoeffding _:
+
+$$P [|E_{in}(g)-E_{out}(g)| > \epsilon ] \leq 2Me^{_-2N \epsilon^2}$$
+
+Resolviendo esta fórmula, llegamos a:
+
+$$ E_{out}(g) \leq E_{in}(g) + \sqrt{\frac{1}{2N} ln \Bigg(\frac{2M} {\delta} \Bigg)} $$
+
+Debemos cambiar $E_{in}$ por $E_{test}$, ya que esta ecuación es para cuando $E_{in}$ tiene un conjunto finito de hipótesis de tamaño $M$ y en este caso, nuestro conjunto de hipótesis es infinito. Por eso, debemos tomar $M = 1$.
+
+$$ E_{out}(g) \leq E_{test}(g) + \sqrt{\frac{1}{2N} ln \Bigg(\frac{2M} {\delta} \Bigg)} $$
+
+
+$$ E_{out}(g) \leq E_{test}(g) + \sqrt{\frac{1}{2N} ln \Bigg(\frac{2} {0.05} \Bigg)} $$
+
+```{r}
+datos.test = cbind(I(LAozone.test$temp^2),LAozone.test$ibh,LAozone.test$humidity,1)
+
+# Obtenemos el tamaño de los datos
+N <- nrow(datos.test)
+
+# Calculamos el segundo término de la fórmula
+x <- sqrt( (1/(2*N)) * log( 2 / 0.05) )
+
+# Obtenemos el valor de Eout
+cota_Etest_Eout <- Etest + x
+cat ("Cota de E_out basada en E_test: ", cota_Etest_Eout)
+```
+
+Esta es la cota a nivel de confianza $95\%$, por lo tanto es una toleracia de $0.05$. Se observa que $E_{out}$ es ligeramente mayor que $E_{test}$ aunque sigue siendo un buen valor para dar por bueno el modelo seleccionado. 
+
+
+### Apartado 9
+
+#### Discutir y justificar la calidad del modelo encontrado y las razones por las que considera que dicho modelo es un buen ajuste que representa adecuadamente los datos muestrales
+
+Después de haber realizado los anteriores apartados hemos llegado a la conclusión de que el modelo es bueno por las siguientes razones:
+
+  * El modelo tiene una cota para $E_{out}$ de $21.48$.
+  * No es un modelo complejo y usa pocas variables:
+    * _ibh_ sin trasformación.
+    * _humidity_ sin trasformación.
+    * _temp_ con la función potencial al cuadrado.
+    * Sin término independiente.
+  
+  * Es un modelo al que aplicamos regularización hasta encontrar el valor óptimo para el $E_{test}$ que determina la cota de generalización que se da para $E_{out}$ que en última instancia es el valor que queremos hacer más pequeño.
+  * Los pesos solución del modelo lineal son: $w = ( 0.002842689 , -0.0005390458 , 0.00114263 )$
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+## Problema de Clasificación
+
+### Apartado 1
+
+#### Comprender el problema a resolver
+
+Para el problema de clasificación, hemos escogido la base de datos [South african Heart Disease](http://statweb.stanford.edu/~tibs/ElemStatLearn/datasets/SAheart.info.txt), la cual tiene las siguientes columnas:
+
+  1. **row.names**: Identificador.
+  2. **sbp**: Presión arterial sistólica.
+  3. **tobacco**: Tabaco acumulado (kg).
+  4. **ldl**: Lipoproteína de baja densidad (Colesterol malo).
+  5. **adiposity**: Adiposidad.
+  6. **famhist**: Historia familiar de enfermedad cardíaca (presente o ausente).
+  7. **typea**: Comportamiento Tipo-A.
+  8. **obesity**: Obesidad.
+  9. **alcohol**: Consumo de alcohol actual.
+  10. **age**: Edad de inicio.
+  11. **chd**: Variable respuesta, enfermedad coronaria.
+
+Ninguna variable podrá tomar valores _NA_. Además, nuestra variable de respuesta será **chd** como nos proporciona el enlace de la base de datos. Por consiguiente, clasificaremos en función de **chd**.
+
+Nuestro objetivo será buscar un modelo para encontrar que factores son los que más afectan a las personas que pueden padecer una enfermedad coronaria.
+
+Antes de nada, vamos a leer nuestro data.frame: 
+$\\$
+```{r}
+# Guardamos el data frame en una vaarible
+SAheart <- read.csv("datos/SAheart.data")
+
+# Visualizamos los datos (la tabla)
+head(SAheart)
+
+# Mostramos la dimensión que tiene (462 filas y 11 columnas)
+dim(SAheart)
+```
+
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 2
+
+#### Los conjuntos de training, validación y test usados en su caso.
+
+Como se nos proporciona solo un archivo, somos nosotros quiénes tenemos que hacer la partición de los datos. Para ello, vamos a usar el mismo procedimiento usado por la profesora en la documentación proporcionada. Por tanto, partimos el data.frame en un $70\%$ para el training y en un $30\%$ para el test.
+$\\$
+```{r}
+# Establecemos una semilla por defecto para hacer el mismo tipo de partición
+set.seed(1)
+
+# Nos quedamos con los indices para el training
+train = sample (nrow(SAheart), round(nrow(SAheart)*0.7)) 
+
+# Reservamos por separado training y tes
+SAheart.train = SAheart[train,]  
+SAheart.test = SAheart[-train,]
+```
+
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+### Apartado 3
+
+#### Preprocesado de los datos: Falta de datos, categorización, normalización, reducción de dimensionalidad, etc.
+
+Como pudimos ver en la cabecera del data.frame, la primera columna es un identificador por lo cual no nos sirve para ajustar los modelos, por lo que la podemos despreciar.
+$\\$
+```{r}
+# Borramos la primera columna tanto para training como para test
+SAheart.train <- SAheart.train[,-1] 
+SAheart.test <- SAheart.test[,-1]
+```
+
+La quinta columna es una variable binaria dada como factores, por lo cual la cambiamos a ceros y unos para poder trabajar con ella. 
+
+- Cero significa la ausencia de la característica.
+- Uno significa la presencia de de la característica
+$\\$
+```{r}
+# Cambiamos a numérico la columna del training
+SAheart.train[,5] <- as.numeric(SAheart.train[,5]) # Obtenemos 2 y 1
+SAheart.train[,5][SAheart.train[,5] == 1] = 0 # Cambiamos el 1 por el 0
+SAheart.train[,5][SAheart.train[,5] == 2] = 1 # Cambiamos el 2 por el 2
+
+# Cambiamos a numérico la columna del training
+SAheart.test[,5] <- as.numeric(SAheart.test[,5]) # Obtenemos 2 y 1
+SAheart.test[,5][SAheart.test[,5] == 1] = 0 # Cambiamos el 1 por el 0
+SAheart.test[,5][SAheart.test[,5] == 2] = 1 # Cambiamos el 2 por el 2
+```
+
+Ahora procedemos a transformar las variables que tengan una distribución de los datos asimétrica. Para ello seguimos el mismo procedimiento que en el problema de regresión, salvo que puesto que las varibales _alcohol_ y _tobacco_ tienen ceros en su columna, hacemos una traslación sumando uno a todos los valores para poder realizar la trasformación que mitiga la asimetría.
+$\\$
+```{r}
+# Obtenemos el valor de asimetría de los datos training
+v_asimetria = apply(SAheart.train, 2, skewness)
+
+# Ordenamos de mayor a menor los valores obtenido
+sort(abs(v_asimetria), decreasing = T)
+```
+
+Luego, transformamos los datos a partir de un umbral de $0.8$. Elegimos este umbral, ya que los valores más cercanos a $0$ serán los más simétricos. Por lo tanto, realizaremos transformaciones para _alcohol_, _tobacco_, _ldl_, _sbp_ y _obesity_.
+$\\$
+```{r}
+# Transformación para la variable alcohol
+# -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+alcohol_trans = BoxCoxTrans(SAheart.train$alcohol+1) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(SAheart.train$alcohol+1, main = "Sin transformacion (alcohol)", xlab = "", col = 3)
+hist(predict(alcohol_trans,SAheart.train$alcohol+1), 
+     main = "Con transformacion (alcohol)", xlab = "", col = 3)
+
+# Transformación para la variable tobacco
+# -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+tobacco_trans = BoxCoxTrans(SAheart.train$tobacco+1) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(SAheart.train$tobacco+1, main = "Sin transformacion (tobacco)", xlab = "", col = 3)
+hist(predict(tobacco_trans,SAheart.train$tobacco+1), 
+     main = "Con transformacion (tobacco)", xlab = "", col = 3)
+
+# Transformación para la variable ldl 
+# -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+ldl_trans = BoxCoxTrans(SAheart.train$ldl) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(SAheart.train$ldl, main = "Sin transformacion (ldl)", xlab = "", col = 3)
+hist(predict(ldl_trans,SAheart.train$ldl), 
+     main = "Con transformacion (ldl)", xlab = "", col = 3)
+
+# Transformación para la variable sbp 
+# -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+sbp_trans = BoxCoxTrans(SAheart.train$sbp) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(SAheart.train$sbp, main = "Sin transformacion (sbp)", xlab = "", col = 3)
+hist(predict(sbp_trans,SAheart.train$sbp), main = "Con transformacion (sbp)", 
+     xlab = "", col = 3)
+
+# Transformación para la variable obesity -----------------------------------------------------------------------------------
+par(mfrow=c(1:2)) # Dividimos la región en dos partes
+obesity_trans = BoxCoxTrans(SAheart.train$obesity) # Obtenemos la transformación
+# Comparamos los histogramas con transformación y sin transformación
+hist(SAheart.train$obesity, main = "Sin transformacion (obesity)", xlab = "", col = 3)
+hist(predict(obesity_trans,SAheart.train$obesity), 
+     main = "Con transformacion (obesity)", xlab = "", col = 3)
+```
+
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+Como se puede comprobar los valores ya son más simétricos. Entonces, ya solo nos queda guardar esas transformaciones para el train.
+$\\$
+```{r}
+# Transformación alcohol (train)
+SAheart.train$alcohol = predict(alcohol_trans,SAheart.train$alcohol+1)
+
+# Transformación tobacco (train)
+SAheart.train$tobacco = predict(tobacco_trans,SAheart.train$tobacco+1)
+
+# Transformación ldl (train)
+SAheart.train$ldl = predict(ldl_trans,SAheart.train$ldl)
+
+# Transformación sbp (train)
+SAheart.train$sbp = predict(sbp_trans,SAheart.train$sbp)
+
+# Transformación obesity (train)
+SAheart.train$obesity = predict(obesity_trans,SAheart.train$obesity)
+```
+
+También guardamos esas mismas transformaciones para el test.
+$\\$
+```{r}
+# Transformación alcohols (test)
+SAheart.test$alcohol = predict(alcohol_trans,SAheart.test$alcohol+1)
+
+# Transformación tobacco (test)
+SAheart.test$tobacco = predict(tobacco_trans,SAheart.test$tobacco+1)
+
+# Transformación ldl (test)
+SAheart.test$ldl = predict(ldl_trans,SAheart.test$ldl)
+
+# Transformación sbp (test)
+SAheart.test$sbp = predict(sbp_trans,SAheart.test$sbp)
+
+# Transformación obesity (test)
+SAheart.test$obesity = predict(obesity_trans,SAheart.test$obesity)
+```
+
+
+### Apartado 4
+
+#### Selección de clases de funciones a usar
+
+```{r}
+attach(SAheart.train) # para prescendir y simplificar el prefijo SAheart
+```
+
+Antes de nada, implementamos una función que tiene el mismo funcionamiento que _pairs_ pero en el triángulo superior mostramos los coeficientes de correlación lineal que nos dicen como de relacionadas linealmente están las variables. Estos coeficientes se imprimen con un tamaño proporcional a su valor.
+$\\$
+```{r}
+panel.cor <- function(x, y, digits=2, prefix="", cex.cor) {
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex * r)
+}
+```
+
+Hacemos uso de la función, y mostramos gráficamente todas las variables con todas, salvo la variable respuesta (_chd_) y la binaria (_famhist_).
+$\\$
+```{r}
+pairs(SAheart.train[,c(-5,-10)], lower.panel=panel.smooth,upper.panel=panel.cor)
+```
+
+Puesto que _adiposity_ está muy relacionada linealmente con dos variables, optamos por eliminarla de los atributos que usaremos para los modelos.
+$\\$
+```{r}
+# Quitamos adiposity tanto para train como para test
+SAheart.train <- SAheart.train[,-4]
+SAheart.test <- SAheart.test[,-4]
+
+# Y volvemos a mostrar el gráfico
+pairs(SAheart.train[,c(-4,-9)], lower.panel=panel.smooth,upper.panel=panel.cor)
+```
+
+Observamos que las variables restantes no tienen una relacion lineal fuerte para decidir eliminarlas. Por lo que trabajaremos con ellas.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+Una vez arreglados nuestros datos, ya podemos pasar a la selección del modelo. Para empezar a seleccionar el mejor modelo, nos basaremos dos condiciones:
+
+1. En el error $E_{test}$, debido a que éste se aproxima al error fuera de la muestra, $E_{out}$, mejor que $E_{in}$. Por ello creamos una función que nos calcule los errores $E_{in}$ y $E_{test}$.
+
+2. Nos preocuparemos en obtener unos buenos resultados de la matriz de confusión. Nuestro objetivo será disminuir la variable $Y$, ya que esa variable significa _las personas que predecimos que están sanas, pero en realidad están enfermas_. Sin embargo, tendremos que controlar también la variable $Z$, ya que son  _las personas que predecimos que están enfermas, pero en realidad están sanas_.
+
+|  | 0 (Positivo) | 1 (Negativo) |
+| :---: | :---: | :---: |
+| 0 (Positivo) | X | Y |
+| 1 (Negativo) | Z | X |
+
+Por lo tanto, para elegir el mejor modelo, intentaremos mantener equilibrado ambas condiciones.
+
+Ahora, creamos una función que dado un modelo calcula el error dentro de la muestra ($E_{in}$) y el error en el conjunto de test ($E_{test}$)
+$\\$
+```{r}
+# Función que calcula los errores E_in y E_test para regresión logística
+errorres_regresion_logistica <- function(m){
+  
+  probTr = predict(m, type="response")
+  probTst = predict(m, data.frame(SAheart.test), type="response")
+  
+  predTst = rep(0, length(probTst)) # predicciones por defecto 0 
+  predTst[probTst >= 0.5] = 1 # >= 0.5 clase 1
+  
+  predTr = rep(0, length(probTr)) # predicciones por defecto 0 
+  predTr[probTr >= 0.5] = 1 # >= 0.5 clase 1
+  
+  print(table(predTst, Real=SAheart.test$chd)) # Para el calculo del Etest
+  
+  # Calculamos los errores
+  Ein = mean(predTr != SAheart.train$chd)
+  Etest = mean(predTst != SAheart.test$chd)
+  
+  list(Etest=Etest, Ein=Ein)
+}
+```
+
+**Modelo 1**: Regresión Logística con todas las variables para predecir _chd_.
+$\\$
+```{r}
+# Creamos el modelo
+ml1 = glm(chd ~ sbp + tobacco + ldl + typea + obesity + alcohol + age, family = binomial(logit), 
+          data = SAheart.train) 
+summary(ml1) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml1) # Obtenemos los errores
+```
+
+Como se puede ver en la salida del _summary()_, los coeficientes más importantes son _ldl_ y _age_, ya que tienen las $3$ estrellas. Sin embargo, no podemos despreciar a _typea_ y _tobacco_ que tienen dos estrellas. La primera comparación que haremos será de _chd_ con las cuatro mejores, sin niguna transformación.
+
+**Modelo 2**: Predecimos _chd_ con la variable _ldl_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml2 = glm(chd ~ ldl, family = binomial(logit), data = SAheart.train) 
+summary(ml2) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml2) # Obtenemos los errores
+```
+
+**Modelo 3**: Predecimos _chd_ con la variable _age_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml3 = glm(chd ~ age , family = binomial(logit), data = SAheart.train) 
+summary(ml3) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml3) # Obtenemos los errores
+```
+
+**Modelo 4**: Predecimos _chd_ con la variable _tobacco_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml4 = glm(chd ~ tobacco , family = binomial(logit), data = SAheart.train) 
+summary(ml4) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml4) # Obtenemos los errores
+```
+
+**Modelo 5**: Predecimos _chd_ con la variable _typea_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml5 = glm(chd ~ typea, family = binomial(logit), data = SAheart.train) 
+summary(ml5) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml5) # Obtenemos los errores
+```
+
+No hay ningún atributo que explique por sí sola la variable _chd_ con amplia diferencia atendiendo a los errores que produce la regresión lineal ya la matriz de confusión. Ya que los modelos $2$, $3$ y $4$, obtienen resultados parecidos.
+
+Ahora vamos a usar varias combinaciones de las $4$ mejores variables para encontrar una predicción de _chd_ más ajustada.
+
+**Modelo 6**: Predecimos _chd_ con las variables _ldl_, _age_ y _tobacco_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml6 = glm(chd ~ ldl + age + tobacco, family = binomial(logit), data = SAheart.train) 
+summary(ml6) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml6) # Obtenemos los errores
+```
+
+**Modelo 7**: Predecimos _chd_ con las variables _ldl_, _age_ y _typea_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml7 = glm(chd ~ ldl + age + typea, family = binomial(logit), data = SAheart.train) 
+summary(ml7) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml7) # Obtenemos los errores
+```
+
+**Modelo 8**: Predecimos _chd_ con las variables _ldl_, _age_, _typea_ y _tobacco_ mediante Regresión Logística.
+$\\$
+```{r}
+# Creamos el modelo
+ml8 = glm(chd ~ ldl + age + typea + tobacco, family = binomial(logit), data = SAheart.train) 
+summary(ml8) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml8) # Obtenemos los errores
+```
+
+De entre las combinaciones posibles, comprobamos que con los modelos $6$ y $8$, obtenemos una mejoría y mejor resultados en las dos condiciones necesarias para elegir el modelo final. Pero, vamos a intentar mejorar aún más.
+
+A continuación, vamos a probar transformaciones en las variables ya que sospechamos que puede que no haya linealidad en los datos para explicar _chd_, puesto que las soluciones no fueron satisfactorias.
+
+**Modelo 9**: Predecimos _chd_ mediante Regresión Logística, usando la potencia de elevar _age_ a cinco.
+$\\$
+```{r}
+# Creamos el modelo
+ml9 = glm(chd ~ I(age^5) , family = binomial(logit), data = SAheart.train)
+summary(ml9) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml9) # Obtenemos los errores
+```
+
+Además, usaremos combinaciones variables con y sin transformaciones no lineales para encocntrar una predicción de chd más ajustada.
+
+**Modelo 10**: Predecimos _chd_ mediante Regresión Logística, usando la potencia de elevar _age_ a cinco y sin transformación para _ldl_.
+$\\$
+```{r}
+# Creamos el modelo
+ml10 = glm(chd ~ I(age^5) + ldl , family = binomial(logit), data = SAheart.train)
+summary(ml10) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml10) # Obtenemos los errores
+```
+
+**Modelo 11**: Predecimos _chd_ mediante Regresión Logística usando las variables sin transformar _age_ y _tobacco_ y con la transformación de _ldl_.
+$\\$
+```{r}
+# Creamos el modelo
+ml11 = glm(chd ~ atan(ldl) + age + tobacco, family = binomial(logit), data = SAheart.train)
+summary(ml11) # Realizamos un análisis del modelo
+errorres_regresion_logistica(ml11) # Obtenemos los errores
+```
+
+**Modelo 12**: Predecimos _chd_ mediante Regresión Logística usando las variables sin transformar _typea_ y _tobacco_ y con la transformación de _age_.
+$\\$
+```{r}
+ml12 = glm(chd ~  I(age^5) + tobacco + typea, 
+          family = binomial(logit), data = SAheart.train)
+summary(ml12)
+errorres_regresion_logistica(ml12) # Obtenemos los errores
+```
+
+En este modelo, obtenemos una pequeña mejoría, en comparación a los demás modelos, donde usábamos.
+
+Después de probar varios modelos, antes de decantarnos por uno de ellos vamos a aplicar regularización sobre los dos mejores (Modelo 6 y Modelo 12) y si obtenemos mejores resultados será necesario tal regularización.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 5
+
+#### Discutir la necesidad de regularización y en su caso la función usada.
+
+Antes de comenzar a hacer el ejercicio, debemos tener en cuenta que a nuestra matriz de confusión le hemos dado una penalización a los valores donde _la persona esté enferma y le decimos que está sana_. La matriz de costes que hemos usado ha sido:
+
+|  | 0 (Positivo) | 1 (Negativo) |
+| :---: | :---: | :---: |
+| 0 (Positivo) | 0 | 1.5 |
+| 1 (Negativo) | 1 | 0 |
+
+Para utilizar regularización usamos una función que hemos definido nosotros (usada en la práctica 2) donde aplicaremos el modelo de Regresión Lineal con Weight Decay, cuyos pesos serán pasados al PLA_Pocket (implementado en la práctica 2).
+$\\$
+```{r}
+# Función PLA_Pocket
+PLA_pocket=function(datos, label, max_iter, vini, c1){
+  
+  # Establecemos una semilla por defecto
+  set.seed(79)
+  
+  if(max_iter == 0)
+    return(list(w=vini))
+  
+  # Este es el numero de datos que tenemos, uno por cada fila
+  numDatos = nrow(datos)
+  
+  # Esta variable indicara si hemos conseguido ajustar los coeficientes
+  # de tal manera que clasifiquen bien todos los puntos
+  malAjustado = F
+  
+  # En esta variable devolveremos el numero de iteraciones usado
+  # que como vemos si no se modifica es el maximo
+  numIter = max_iter
+  
+  # En esta variable guardamos la mejor solucion hasta el momento
+  mejorVini = vini
+  # En esta el error menor alcanzado hasta el momento
+  mejorErr = mean(sign(datos%*%vini)!=label)+(c1-1)*mean(sign(datos%*%vini)==-1 & label==1)
+  
+  # Bucle principal tendra como maximo max_iter iteraciones
+  for(n in 1:max_iter) {
+    
+    # Calculamos indices aleatorios que dan el orden en
+    # que explorar los puntos de entrada
+    indices=sample(1:numDatos,numDatos)
+    
+    # Para cada incide del vector
+    for( i in indices) {
+        
+      # Comprobamos si el signo que asigna el w actual 
+      # coincide con con la etiqueta
+      if(sign(datos[i,]%*%vini) != label[i]) {
+        
+        # si no es asi probamos con un w nuevo 
+        vini = vini+datos[i,]*label[i]
+        malAjustado = T
+        
+        # Calculamos el error de la solucion nueva
+        errActual = mean(sign(datos%*%vini)!=label)+(c1-1)*mean(sign(datos%*%vini)==-1 & label==1)
+        # Si el w nuevo es mejor lo cambiamos y volvemos a empezar
+        # la exploracion
+        if(errActual<mejorErr) {
+          mejorVini = vini
+          mejorErr = errActual
+          break
+        }
+      }
+    }
+    
+    # Si no esta mal ajustado quiere decir que se 
+    # clasificaron todos los puntos bien y hemos terminado
+    if(!malAjustado){
+      # Guardamos el numero de iteraciones que fueron necesarias
+      numIter=n
+      # Salimos del bucle principal
+      break
+      
+    } else {
+      # Si esta mal ajustado ponemos la variable a false para
+      # comprobar en la siguiente iteracion
+      malAjustado = F
+    }
+  }
+  
+  # Devolvemos la salida en esta lista
+  list(w=mejorVini,num_iteraciones=numIter,error=mejorErr)
+}
+```
+
+Nos volvemos a crear una función que calcula los errores, ya que ahora estamos en clasificación. Haremos un cambio de etiquetas, es decir, pasaremos nuestras etiquetas a $-1$ y $1$, para que las funciones de antes puedan ser usadas, y luego pasaremos el $-1$ a $0$, ya que nuestra variable respuesta consta de $0$ y $1$.
+$\\$
+```{r}
+# Función que calcula el error
+RegPLA <- function(datos,datostest,landa,maxiter,c=1.5){
+  
+  # Hacemos un cambio de numeración para las etiquetas (train y test)
+  realEtiqTr = SAheart.train$chd
+  realEtiqTr[realEtiqTr == 0] = -1
+  realEtiqTst = SAheart.test[,9]
+  realEtiqTst[realEtiqTst == 0] = -1
+  
+  # Calculamos RL con WD
+  w = Regress_LinWD(datos,realEtiqTr,landa)
+  # Le pasamos los pesos
+  w = PLA_pocket(datos,realEtiqTr,maxiter,w,c)$w #rep(0,ncol(datos))
+  
+  # Volvemos a la numeración correcta de las etiquetas (train y test)
+  etiqTr=sign(datos%*%w)
+  etiqTr[etiqTr == -1] = 0
+  etiqTst=sign(datostest%*%w)
+  etiqTst[etiqTst == -1] = 0
+  
+  # Pintamos nuestra matriz de confusión
+  print(table(etiqTst,Real=SAheart.test$chd))
+  
+  # Calculamos los errores
+  Ein=mean(etiqTr != SAheart.train$chd)
+  Etest=mean(etiqTst != SAheart.test$chd)
+  
+  list(Ein=Ein, Etest=Etest, w=w)
+}
+```
+
+Una vez implementadas, realizamos la misma idea que para el problema anterior, es decir, cogemos los dos mejores modelos (Modelo 6 y Modelo 12) que hemos obtenido con Regresión Logística e intentamos mejorarlos, introduciendo un lambda (regularización).
+$\\$
+
+**Modelo 1**: Regresión Lineal usando WD, cuyos pesos son introducidos al PLA_Pocket (anteriormente modelo 6), con los siguientes atributos:
+
+- _ldl_ sin transformación.
+- _age_ sin transformación.
+- _tobacco_ sin transformación.
+$\\$
+```{r}
+datos = cbind(SAheart.train$ldl , SAheart.train$age, SAheart.train$tobacco,1)
+datos.test = cbind(SAheart.test$ldl , SAheart.test$age, SAheart.test$tobacco,1)
+
+# Establecemos por defecto un e_test alto ya que nunca llegaremos a ese valor
+Etest = 100
+
+# Calculamos el error para varias lambdas
+for(landa in seq(0,0.001,length.out=10)){
+  sol = RegPLA(datos,datos.test,landa,50)
+  EtestAc = sol$Etest
+  
+  # Nos quedamos con los mejores resultados
+  if(EtestAc < Etest){
+    Etest = EtestAc
+    wmej = w
+    landamej = landa
+  }
+  
+  cat(" Landa: ",landa," Etest: ", EtestAc,"\n")
+}
+
+cat("El mejor landa es ",landamej," con un Etest de ",Etest,
+    " que da la solución: w=[",wmej,"]\n")
+```
+
+Tras hacer regularización un un intervalo amplio de landas escogimos dentro del intervalo $[0,0.01]$, que el valor óptimo de landa sea $0$ para que el error en el conjunto de test fuera mínimo. Por lo que no haría falta usar regularización. 
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+**Modelo 2**: Regresión Lineal usando WD, cuyos pesos son introducidos al PLA_Pocket (anteriormente modelo 12), con los siguientes atributos:
+
+- _age_ con la función potencia a la quinta
+- _tobacco_ sin transformación.
+- _typea_ sin transformación.
+$\\$
+```{r}
+datos = cbind(I(SAheart.train$age^5), SAheart.train$tobacco,SAheart.train$typea,1)
+datos.test = cbind(I(SAheart.test$age^5),SAheart.test$tobacco,SAheart.test$typea,1)
+
+# Establecemos por defecto un e_test alto ya que nunca llegaremos a ese valor
+Etest = 100
+
+# Calculamos el error para varias lambdas
+for(landa in seq(0,0.001,length.out=10)){
+  sol = RegPLA(datos,datos.test,landa,100)
+  EtestAc = sol$Etest
+  
+  # Nos quedamos con los mejores resultados
+  if(EtestAc<Etest){
+    Etest = EtestAc
+    wmej = w
+    landamej = landa
+  }
+  cat(" Landa: ",landa," Etest: ", EtestAc,"\n")
+}
+cat("El mejor landa es ", landamej, " con un Etest de ", Etest,
+    " que da la solución: w=[",wmej,"]\n")
+```
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+Tras hacer regularización un un intervalo amplio de landas escogimos dentro del intervalo $[0,0.001]$, que el valor óptimo de landa sea $0$ para que el error en el conjunto de test fuera mínimo. Por lo que no haría falta usar regularización. 
+
+Aunque el modelo 2, da un menor error en el conjunto del test, obtenemos una peor matriz de confusión y nuestro objetivo es mantener un equilibradro entre ambos, por eso seleccionamos el modelo 1:
+  
+  1. Donde obtenemos un $E_{test}$ bajo.
+  
+  2. Donde la matriz de confusión, predice menos falsos positivos, es decir, gente que está mala y le decimos que está bien.
+
+
+### Apartado 6
+
+#### Definir los modelos a usar y estimar sus parámetros e hyperparámetros.
+
+Vimos en el apartado anterior que usar regularización no es una buena idea ya que no pudimos reducir el error de los modelos que obtuvimos con Regresión Logística. Ya que el $\lambda$ más óptimo para el modelo uno es $0$. Por lo tanto, no podemos justificar el uso de la regularización.
+
+
+### Apartado 7
+
+#### Selección y ajuste modelo final.
+
+El modelo que elegimos es el obtenido mediante Regresión Logística con los siguientes parámetros y variables:
+
+- _ldl_ sin transformación.
+- _age_ sin transformación.
+- _tobacco_ sin transformación.
+$\\$
+```{r}
+ml6 = glm(chd ~ ldl + age + tobacco, family = binomial(logit), data = SAheart.train) 
+
+# Obtenemos los errores y la matriz de confusión
+errorres_regresion_logistica(ml6)
+```
+
+Nos hemos decantando por el anterior modelo, puesto que es uno de los que menor error en el conjunto de test nos ha salido y donde obtenemos el menor número de casos de falsos positivos en la matriz de confusión.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 8
+
+#### Estimacion del error Eout del modelo lo más ajustada posible.
+
+Para estimar el error $E_{out}$, nos hemos basado en $E_{test}$, porque con la de $E_{in}$, obtendríamos una cota peor.
+
+Vamos a obtener la cota $E_{out}$ basada en $E_{test}$, para ello hacemos uso del libro _Learning from Data_, en concreto en la _página 40_, donde nos viene la ecuación que necesitamos, que está basada en la _desigualdad de Hoeffding _:
+
+$$P [|E_{in}(g)-E_{out}(g)| > \epsilon ] \leq 2Me^{_-2N \epsilon^2}$$
+
+Resolviendo esta fórmula, llegamos a:
+
+$$ E_{out}(g) \leq E_{in}(g) + \sqrt{\frac{1}{2N} ln \Bigg(\frac{2M} {\delta} \Bigg)} $$
+
+Debemos cambiar $E_{in}$ por $E_{test}$, ya que esta ecuación es para cuando $E_{in}$ tiene un conjunto finito de hipótesis de tamaño $M$ y en este caso, nuestro conjunto de hipótesis es infinito. Por eso, debemos tomar $M = 1$.
+
+$$ E_{out}(g) \leq E_{test}(g) + \sqrt{\frac{1}{2N} ln \Bigg(\frac{2M} {\delta} \Bigg)} $$
+
+
+$$ E_{out}(g) \leq E_{test}(g) + \sqrt{\frac{1}{2N} ln \Bigg(\frac{2} {0.05} \Bigg)} $$
+
+```{r}
+datos.test = cbind(SAheart.test$ldl , SAheart.test$age, SAheart.test$tobacco,1)
+
+# Obtenemos el Etest del anterior apartado
+Etest = 0.2661871
+
+# Obtenemos el tamaño de los datos
+N <- nrow(datos.test)
+
+# Calculamos el segundo término de la fórmula
+x <- sqrt( (1/(2*N)) * log( 2 / 0.05) )
+
+# Obtenemos el valor de Eout
+cota_Etest_Eout <- Etest + x
+cat ("Cota de E_out basada en E_test: ", cota_Etest_Eout)
+```
+
+Esta es la cota a nivel de confianza $95\%$, por lo tanto es una toleracia de $0.05$. Se observa que $E_{out}$ es mayor que $E_{test}$ aunque sigue siendo un buen valor para dar por bueno el modelo seleccionado.
+$\\$
+```{r}
+# Después de crear una gráfica o iniciar un apartado paramos la ejecución 3 segundos
+Sys.sleep(3)
+```
+
+
+### Apartado 9
+
+#### Discutir y justificar la calidad del modelo encontrado y las razones por las que considera que dicho modelo es un buen ajuste que representa adecuadamente los datos muestrales.
+
+Después de haber realizado los anteriores apartados hemos llegado a la conclusión de que el modelo es bueno por las siguientes razones:
+
+  * El modelo tiene una cota para $E_{out}$ de $0.3813798$, siendo así un error considerable fuera de la muestra.
+  * Su matriz de confusión es la mejor obtenida, ya que obtenemos en la diagonal inversa mejores resultados y cuyos valores son los que dan más penalización a nuestro modelo.
+  * No es un modelo complejo (no usa ninguna transformación) y usa pocas variables:
+    * _ldl_ sin transformación.
+    * _age_ sin transformación.
+    * _tobacco_ sin transformación.
+  
+  * Es un modelo al que no hace falta aplicarle regularización para encontrar el valor óptimo para $E_{test}$ que determina la cota de generalización que se da para $E_{out}$ 
+  * Los pesos solución del modelo lineal son: $w = ( 0.002859783, -0.0009940073, 0.00239286, 0.0002009144 )$

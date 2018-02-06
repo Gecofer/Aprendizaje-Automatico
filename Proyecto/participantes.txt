@@ -1,0 +1,5 @@
+Gema Correa Fern‡ndez
+Ana Puertas Olea
+
+Base de datos con la que hemos realizado la pr‡ctica: 
+1. Breast Cancer Wisconsin (Diagnostic) (clasificaci—n)
